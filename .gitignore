@@ -1,0 +1,34 @@
+# Build artifacts
+*.o
+*.lo
+*.la
+*.so
+*.a
+*.dep
+
+# Libtool directories
+.libs/
+.deps/
+
+# Autoconf/automake cache
+autom4te.cache/
+
+# Generated Makefiles
+Makefile
+Makefile.fragments
+Makefile.objects
+
+# Configure generated files
+config.h
+config.log
+config.status
+config.cache
+config.nice
+libtool
+
+# Modules directory
+modules/
+
+# IDE files (keep .idea/.gitignore if it exists)
+.idea/*
+!.idea/.gitignore
