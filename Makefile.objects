@@ -1,0 +1,9 @@
+-include spech_udp.dep
+spech_udp.lo: /home/lotus/Desktop/LABORATORIOPHP/downloads/spech/spech_udp.c
+	$(LIBTOOL) --tag=CC --mode=compile $(CC) -I. -I/home/lotus/Desktop/LABORATORIOPHP/downloads/spech $(COMMON_FLAGS) $(CFLAGS_CLEAN) $(EXTRA_CFLAGS)   -DZEND_COMPILE_DL_EXT=1 -c /home/lotus/Desktop/LABORATORIOPHP/downloads/spech/spech_udp.c -o spech_udp.lo  -MMD -MF spech_udp.dep -MT spech_udp.lo
+$(phplibdir)/spech.la: ./spech.la
+	$(LIBTOOL) --tag=CC --mode=install cp ./spech.la $(phplibdir)
+
+./spech.la: $(shared_objects_spech) $(SPECH_SHARED_DEPENDENCIES)
+	$(LIBTOOL) --tag=CC --mode=link $(CC) -shared $(COMMON_FLAGS) $(CFLAGS_CLEAN) $(EXTRA_CFLAGS) $(LDFLAGS)  -o $@ -export-dynamic -avoid-version -prefer-pic -module -rpath $(phplibdir) $(EXTRA_LDFLAGS) $(shared_objects_spech) $(SPECH_SHARED_LIBADD)
+
