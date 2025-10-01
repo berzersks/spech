@@ -14,10 +14,11 @@ static zend_class_entry *spech_socket_ce;
 static zend_object_handlers spech_socket_handlers;
 
 static inline spech_socket_t *php_spech_socket_fetch(zend_object *obj) {
-    return (spech_socket_t *) ((char *) (obj) - XtOffsetOf(spech_socket_t, std));
+    return (spech_socket_t *)((char *)(obj) - XtOffsetOf(spech_socket_t, std));
 }
 
-static zend_object *spech_socket_create(zend_class_entry *ce) {
+static zend_object *spech_socket_create(zend_class_entry *ce)
+{
     spech_socket_t *intern = ecalloc(1, sizeof(spech_socket_t) + zend_object_properties_size(ce));
     intern->sockfd = -1;
 
@@ -29,16 +30,23 @@ static zend_object *spech_socket_create(zend_class_entry *ce) {
     return &intern->std;
 }
 
-static void spech_socket_free(zend_object *object) {
+static void spech_socket_free(zend_object *object)
+{
     spech_socket_t *sock = php_spech_socket_fetch(object);
     if (sock->sockfd != -1) close(sock->sockfd);
     zval_ptr_dtor(&sock->callback);
     zend_object_std_dtor(&sock->std);
 }
 
-PHP_METHOD(SpechSocket, __construct) {
-    spech_socket_t *sock = php_spech_socket_fetch(Z_OBJ_P(ZEND_THIS));
+PHP_METHOD(SpechSocket, __construct)
+{
+    zend_long port = 0;
+    ZEND_PARSE_PARAMETERS_START(0, 1)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_LONG(port)
+    ZEND_PARSE_PARAMETERS_END();
 
+    spech_socket_t *sock = php_spech_socket_fetch(Z_OBJ_P(ZEND_THIS));
     sock->sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock->sockfd < 0) {
         zend_throw_error(NULL, "Erro ao criar socket");
@@ -47,20 +55,43 @@ PHP_METHOD(SpechSocket, __construct) {
 
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(0); // porta aleatória
+    addr.sin_port = htons((uint16_t)port);
     addr.sin_addr.s_addr = INADDR_ANY;
 
-    if (bind(sock->sockfd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+    if (bind(sock->sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         zend_throw_error(NULL, "Erro ao dar bind no socket");
         RETURN_THROWS();
     }
 }
 
-int zend_fcall_info_cache_init(zend_fcall_info_cache *fcc, struct _zend_object *object, zend_class_entry *ce, void *ptr,
-                               void *p);
+PHP_METHOD(SpechSocket, connect)
+{
+    char *ip;
+    size_t ip_len;
+    zend_long port;
 
+    ZEND_PARSE_PARAMETERS_START(2, 2)
+        Z_PARAM_STRING(ip, ip_len)
+        Z_PARAM_LONG(port)
+    ZEND_PARSE_PARAMETERS_END();
 
-PHP_METHOD(SpechSocket, listen) {
+    spech_socket_t *sock = php_spech_socket_fetch(Z_OBJ_P(ZEND_THIS));
+
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((uint16_t)port);
+    inet_pton(AF_INET, ip, &addr.sin_addr);
+
+    if (connect(sock->sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        zend_throw_error(NULL, "Erro no connect UDP");
+        RETURN_THROWS();
+    }
+
+    RETURN_TRUE;
+}
+
+PHP_METHOD(SpechSocket, listen)
+{
     zval *callback;
     ZEND_PARSE_PARAMETERS_START(1, 1)
         Z_PARAM_ZVAL(callback)
@@ -75,7 +106,7 @@ PHP_METHOD(SpechSocket, listen) {
         socklen_t addrlen = sizeof(peer_addr);
 
         ssize_t recv_len = recvfrom(sock->sockfd, buffer, sizeof(buffer), 0,
-                                    (struct sockaddr *) &peer_addr, &addrlen);
+                                    (struct sockaddr*)&peer_addr, &addrlen);
         if (recv_len <= 0) continue;
 
         zval retval, args[2];
@@ -85,22 +116,7 @@ PHP_METHOD(SpechSocket, listen) {
         ZVAL_STRINGL(&args[1], buffer, recv_len);
 
         ZVAL_UNDEF(&retval);
-
-        zend_fcall_info fci;
-        zend_fcall_info_cache fcc;
-
-        ZVAL_COPY(&fci.function_name, &sock->callback);
-        fci.size = sizeof(fci);
-        fci.object = Z_OBJ_P(ZEND_THIS);
-        fci.retval = &retval;
-        fci.params = args;
-        fci.param_count = 2;
-        fci.named_params = NULL;
-
-        if (zend_fcall_info_cache_init(&fcc, fci.object, Z_OBJCE(sock->callback), Z_PTR(sock->callback), NULL) ==
-            SUCCESS) {
-            zend_call_function(&fci, &fcc);
-        }
+        call_user_function(NULL, NULL, &sock->callback, &retval, 2, args);
 
         zval_ptr_dtor(&args[0]);
         zval_ptr_dtor(&args[1]);
@@ -108,7 +124,8 @@ PHP_METHOD(SpechSocket, listen) {
     }
 }
 
-PHP_METHOD(SpechSocket, sendTo) {
+PHP_METHOD(SpechSocket, sendTo)
+{
     zval *peer;
     zend_string *data;
 
@@ -133,19 +150,42 @@ PHP_METHOD(SpechSocket, sendTo) {
     inet_pton(AF_INET, ip, &dest.sin_addr);
 
     spech_socket_t *sock = php_spech_socket_fetch(Z_OBJ_P(ZEND_THIS));
-    sendto(sock->sockfd, ZSTR_VAL(data), ZSTR_LEN(data), 0, (struct sockaddr *) &dest, sizeof(dest));
+    sendto(sock->sockfd, ZSTR_VAL(data), ZSTR_LEN(data), 0, (struct sockaddr*)&dest, sizeof(dest));
 
     RETURN_TRUE;
 }
 
+/* ----------- ARGINFOS embutidos ------------ */
+ZEND_BEGIN_ARG_INFO_EX(arginfo_construct, 0, 0, 0)
+    ZEND_ARG_TYPE_INFO(0, port, IS_LONG, 1)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_connect, 0, 0, 2)
+    ZEND_ARG_TYPE_INFO(0, ip, IS_STRING, 0)
+    ZEND_ARG_TYPE_INFO(0, port, IS_LONG, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_listen, 0, 0, 1)
+    ZEND_ARG_CALLABLE_INFO(0, callback, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_sendto, 0, 0, 2)
+    ZEND_ARG_ARRAY_INFO(0, peer, 0)
+    ZEND_ARG_TYPE_INFO(0, data, IS_STRING, 0)
+ZEND_END_ARG_INFO()
+
+/* ----------- REGISTRO DE MÉTODOS ------------ */
 static const zend_function_entry spech_socket_methods[] = {
-    ZEND_ME(SpechSocket, __construct, NULL, ZEND_ACC_PUBLIC)
-    PHP_ME(SpechSocket, listen, NULL, ZEND_ACC_PUBLIC)
-    PHP_ME(SpechSocket, sendTo, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(SpechSocket, __construct, arginfo_construct, ZEND_ACC_PUBLIC)
+    PHP_ME(SpechSocket, connect,     arginfo_connect,   ZEND_ACC_PUBLIC)
+    PHP_ME(SpechSocket, listen,      arginfo_listen,    ZEND_ACC_PUBLIC)
+    PHP_ME(SpechSocket, sendTo,      arginfo_sendto,    ZEND_ACC_PUBLIC)
     PHP_FE_END
 };
 
-PHP_MINIT_FUNCTION(spech) {
+/* ----------- MINIT E ENTRYPOINT ------------ */
+PHP_MINIT_FUNCTION(spech)
+{
     zend_class_entry ce;
     INIT_CLASS_ENTRY(ce, "SpechSocket", spech_socket_methods);
     spech_socket_ce = zend_register_internal_class(&ce);
